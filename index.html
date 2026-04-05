@@ -635,48 +635,33 @@ function renderTMI(t){
   const fontSize=Math.round(H/6/4*0.6); // 60% of original
   ctx.font=`${fontSize}px 'Malgun Gothic','맑은 고딕',sans-serif`;
   ctx.textAlign='center';ctx.textBaseline='middle';
-  // Measure total width for centering
-  let totalW=0;
-  parts.forEach((p,i)=>{totalW+=ctx.measureText(p).width;});
-  // Word wrap: split into lines if too wide
   const maxW=W*0.8;
-  const lines=[];
-  let curLine=[];let curW=0;
-  parts.forEach((p,i)=>{
-    const isHighlight=i%2===1;
-    const words=p.split('');
-    let segment='';
-    for(let c=0;c<p.length;c++){
-      segment+=p[c];
-      const sw=ctx.measureText(segment).width;
-      if(curW+sw>maxW&&curLine.length>0){
-        lines.push([...curLine]);
-        curLine=[];curW=0;segment=p.slice(c-segment.length+1>0?c-segment.length+1:0);
-      }
-    }
-    if(segment)curLine.push({text:segment,highlight:isHighlight});
-    curW+=ctx.measureText(segment).width;
-  });
-  if(curLine.length>0)lines.push(curLine);
-  // Simple approach: render as single centered text with color switching
-  // Re-parse for simpler rendering
   const fadeIn=Math.min(1,TMI.timer/0.8);
   const fadeOut2=Math.min(1,(TMI.duration-TMI.timer)/0.8);
   const alpha=Math.min(fadeIn,fadeOut2);
   ctx.save();
   ctx.globalAlpha=alpha;
-  // Render each part inline, centered
   const lineHeight=fontSize*1.6;
-  // Re-split by lines for wrapping
+  // Character-by-character word wrap (handles long parts)
   const renderLines=[];
-  let rl=[];let rlw=0;
+  let curLine=[];let curW=0;
   parts.forEach((p,i)=>{
     const isH=i%2===1;
-    const pw=ctx.measureText(p).width;
-    if(rlw+pw>maxW&&rl.length>0){renderLines.push(rl);rl=[];rlw=0;}
-    rl.push({text:p,highlight:isH});rlw+=pw;
+    let seg='';
+    for(let c=0;c<p.length;c++){
+      const segTry=seg+p[c];
+      const tryW=ctx.measureText(segTry).width;
+      if(curW+tryW>maxW&&(curLine.length>0||seg.length>0)){
+        if(seg)curLine.push({text:seg,highlight:isH});
+        renderLines.push(curLine);
+        curLine=[];curW=0;seg=p[c];
+      } else {
+        seg=segTry;
+      }
+    }
+    if(seg){curLine.push({text:seg,highlight:isH});curW+=ctx.measureText(seg).width;}
   });
-  if(rl.length>0)renderLines.push(rl);
+  if(curLine.length>0)renderLines.push(curLine);
   const totalH=renderLines.length*lineHeight;
   const startY=H/2-totalH/2+lineHeight/2;
   renderLines.forEach((line,li)=>{
@@ -733,8 +718,9 @@ function renderNicknameInput(t){
   glowText('닉네임을 입력하세요',W/2,H/2-65,'#aabbcc',14,8);
   // Input box
   const bw=280,bh=44,bx=W/2-bw/2,by=H/2-bh/2;
+  const inputHover=mouse.x>=bx&&mouse.x<=bx+bw&&mouse.y>=by&&mouse.y<=by+bh;
   ctx.fillStyle='rgba(10,10,40,0.8)';ctx.fillRect(bx,by,bw,bh);
-  ctx.strokeStyle='#6688ff';ctx.lineWidth=2;ctx.strokeRect(bx,by,bw,bh);
+  ctx.strokeStyle=inputHover?'#aaccff':'#6688ff';ctx.lineWidth=2;ctx.strokeRect(bx,by,bw,bh);
   // Text
   ctx.font="20px 'Malgun Gothic','맑은 고딕',sans-serif";ctx.textAlign='left';
   ctx.fillStyle='#ffffff';
@@ -744,9 +730,39 @@ function renderNicknameInput(t){
     const tw=ctx.measureText(NI.name).width;
     ctx.fillRect(bx+12+tw+2,by+8,2,28);
   }
-  // Hint
-  glowText('Enter로 확인',W/2,H/2+50,'#667799',12,6);
+  // Placeholder hint
+  if(NI.name.length===0){
+    ctx.fillStyle='rgba(150,170,200,0.4)';
+    ctx.fillText('탭하여 입력',bx+12,by+30);
+  }
+  // Confirm button (mobile-friendly)
+  const cbw=120,cbh=40,cbx=W/2-cbw/2,cby=H/2+30;
+  const cbHover=mouse.x>=cbx&&mouse.x<=cbx+cbw&&mouse.y>=cby&&mouse.y<=cby+cbh;
+  const canConfirm=NI.name.length>0;
+  ctx.save();
+  ctx.globalAlpha=canConfirm?1:0.4;
+  ctx.fillStyle=cbHover&&canConfirm?'rgba(80,140,100,0.8)':'rgba(40,80,60,0.7)';
+  ctx.fillRect(cbx,cby,cbw,cbh);
+  ctx.strokeStyle=cbHover&&canConfirm?'#88ff88':'#44aa66';ctx.lineWidth=2;
+  ctx.strokeRect(cbx,cby,cbw,cbh);
+  ctx.font="15px 'Malgun Gothic',sans-serif";ctx.textAlign='center';
+  ctx.fillStyle='#ffffff';
+  ctx.fillText('확인',W/2,cby+26);
   ctx.restore();
+  // Hint
+  glowText('입력창을 탭 → 닉네임 입력 → 확인',W/2,H/2+100,'#667799',11,4);
+  ctx.restore();
+  // Handle taps
+  if(mouse.justDown){
+    if(inputHover){
+      _niInput.focus();
+      _niInput.click();
+    } else if(cbHover&&canConfirm){
+      NI.active=false;
+      _niInput.blur();
+      insertRecord(NI.name,Math.floor(G.finalTime));
+    }
+  }
 }
 
 // ─── GAME STATE ──────────────────────────────────────────────────────────────
